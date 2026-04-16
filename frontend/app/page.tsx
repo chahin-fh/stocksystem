@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type FieldType =
   | "text"
@@ -30,6 +31,14 @@ type Activity = {
   createdAt: string;
 };
 
+type DatabaseItem = {
+  id: string;
+  name: string;
+  description: string;
+  fieldCount: number;
+  createdAt: string;
+};
+
 const FIELD_TYPES: FieldType[] = [
   "text",
   "number",
@@ -41,6 +50,8 @@ const FIELD_TYPES: FieldType[] = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+  const userName = "Fhima";
   const [view, setView] = useState<"onboarding" | "dashboard" | "entry">("onboarding");
   const [step, setStep] = useState(0);
   const [dbName, setDbName] = useState("");
@@ -49,6 +60,8 @@ export default function Home() {
   const [fields, setFields] = useState<FieldDef[]>([]);
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [databases, setDatabases] = useState<DatabaseItem[]>([]);
+  const [showNavMenu, setShowNavMenu] = useState(false);
 
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState<FieldType>("text");
@@ -56,6 +69,30 @@ export default function Home() {
   const [newInvite, setNewInvite] = useState("");
   const [recordValues, setRecordValues] = useState<Record<string, string | boolean>>({});
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const savedFields = localStorage.getItem("fieldbase_fields");
+    const savedDatabases = localStorage.getItem("fieldbase_databases");
+    try {
+      if (savedFields) {
+        setFields(JSON.parse(savedFields));
+      }
+      if (savedDatabases) {
+        setDatabases(JSON.parse(savedDatabases));
+      }
+    } catch {
+      localStorage.removeItem("fieldbase_fields");
+      localStorage.removeItem("fieldbase_databases");
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("fieldbase_fields", JSON.stringify(fields));
+  }, [fields]);
+
+  useEffect(() => {
+    localStorage.setItem("fieldbase_databases", JSON.stringify(databases));
+  }, [databases]);
 
   const addActivity = (action: string) => {
     setActivities((prev) => [
@@ -111,6 +148,16 @@ export default function Home() {
       setError("Add at least one field");
       return;
     }
+    setDatabases((prev) => [
+      {
+        id: crypto.randomUUID(),
+        name: dbName.trim(),
+        description: dbDescription.trim(),
+        fieldCount: fields.length,
+        createdAt: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
     addActivity(`Created database "${dbName}" with ${fields.length} field(s)`);
     setView("dashboard");
     setError("");
@@ -190,6 +237,18 @@ export default function Home() {
     "Review and create",
   ];
 
+  const onLogout = () => {
+    setShowNavMenu(false);
+    setView("onboarding");
+    setError("");
+    addActivity("Logged out");
+  };
+
+  const onProfile = () => {
+    setShowNavMenu(false);
+    addActivity("Opened profile");
+  };
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -200,16 +259,72 @@ export default function Home() {
             <p className="brand-sub">Custom schema workspace</p>
           </div>
         </div>
-        <div className="tabs">
-          <button className={`tab ${view === "onboarding" ? "active" : ""}`} onClick={() => setView("onboarding")}>
-            Onboarding
+        <div className={`nav-avatar-wrap ${showNavMenu ? "open" : ""}`}>
+          <button
+            className="nav-avatar-btn"
+            onClick={() => setShowNavMenu((prev) => !prev)}
+            title={userName}
+            aria-label="Open navigation menu"
+            aria-expanded={showNavMenu}
+          >
+            {userName.charAt(0).toUpperCase()}
           </button>
-          <button className={`tab ${view === "dashboard" ? "active" : ""}`} onClick={() => setView("dashboard")}>
-            Dashboard
-          </button>
-          <button className={`tab ${view === "entry" ? "active" : ""}`} onClick={() => setView("entry")}>
-            Add Record
-          </button>
+          <ul className="nav-dropdown-menu">
+            <li>
+              <button
+                className="nav-dropdown-item"
+                onClick={() => {
+                  setView("onboarding");
+                  setShowNavMenu(false);
+                }}
+                tabIndex={showNavMenu ? 0 : -1}
+              >
+                Onboarding
+              </button>
+            </li>
+            <li>
+              <button
+                className="nav-dropdown-item"
+                onClick={() => {
+                  setView("dashboard");
+                  setShowNavMenu(false);
+                }}
+                tabIndex={showNavMenu ? 0 : -1}
+              >
+                Dashboard
+              </button>
+            </li>
+            <li>
+              <button
+                className="nav-dropdown-item"
+                onClick={() => {
+                  setView("entry");
+                  setShowNavMenu(false);
+                }}
+                tabIndex={showNavMenu ? 0 : -1}
+              >
+                Add Record
+              </button>
+            </li>
+            <li>
+              <button
+                className="nav-dropdown-item"
+                onClick={onProfile}
+                tabIndex={showNavMenu ? 0 : -1}
+              >
+                Profile
+              </button>
+            </li>
+            <li>
+              <button
+                className="nav-dropdown-item danger"
+                onClick={onLogout}
+                tabIndex={showNavMenu ? 0 : -1}
+              >
+                Logout
+              </button>
+            </li>
+          </ul>
         </div>
       </header>
 
@@ -353,6 +468,23 @@ export default function Home() {
               <p className="step-text">Workspace / {dbName || "Untitled Database"}</p>
               <h2 className="title">Database Dashboard</h2>
               <p className="muted">{dbDescription || "No description yet."}</p>
+            </div>
+
+            <div className="view-actions standalone-actions">
+              <button
+                className="metric hero view-toggle"
+                onClick={() => router.push("/fields")}
+              >
+                <p>{fields.length}</p>
+                <small>View All Fields</small>
+              </button>
+              <button
+                className="metric hero view-toggle"
+                onClick={() => router.push("/databases")}
+              >
+                <p>{databases.length}</p>
+                <small>View All Databases</small>
+              </button>
             </div>
 
             <div className="metrics">
