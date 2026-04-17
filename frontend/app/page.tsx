@@ -39,7 +39,7 @@ export default function Home() {
 
   const userName = "Fhima";
 
-  const [view, setView] = useState<"onboarding" | "dashboard" | "entry" | "settings">("onboarding");
+  const [view, setView] = useState<"onboarding" | "dashboard" | "entry" | "settings" | "allRecords">("onboarding");
 
   const [settingsTab, setSettingsTab] = useState<"profile" | "database" | "notifications">("profile");
 
@@ -1222,6 +1222,20 @@ export default function Home() {
 
               </button>
 
+              <button
+
+                className="metric hero view-toggle"
+
+                onClick={() => setView("allRecords")}
+
+              >
+
+                <p>{records.length}</p>
+
+                <small>View All Records</small>
+
+              </button>
+
             </div>
 
 
@@ -1560,6 +1574,104 @@ export default function Home() {
             </div>
           </section>
         )}
+
+        {view === "allRecords" ? (
+          <section className="stack">
+            <div className="panel">
+              <div className="row-between">
+                <div>
+                  <p className="step-text">All Records / {dbName || "Untitled Database"}</p>
+                  <h2 className="title">Product Catalog</h2>
+                  <p className="muted">{records.length} items in stock</p>
+                </div>
+                <button className="btn primary" onClick={() => setView("dashboard")}>
+                  Back to Dashboard
+                </button>
+              </div>
+            </div>
+
+            <div className="records-grid">
+              {records.length === 0 ? (
+                <div className="panel empty-state">
+                  <h3>No Records Yet</h3>
+                  <p>Start by adding your first product to the catalog.</p>
+                  <button className="btn primary" onClick={() => setView("entry")}>
+                    Add First Record
+                  </button>
+                </div>
+              ) : (
+                records.map((record) => (
+                  <div key={record.id} className="record-card">
+                    <div className="record-card-header">
+                      {(() => {
+                        const productName = fields.find(f => f.name.toLowerCase().includes('product' ) || f.name.toLowerCase().includes('name'))?.id;
+                        const name = productName ? record.values[productName] : 'Untitled Product';
+                        return typeof name === 'string' ? name : String(name);
+                      })()}
+                    </div>
+                    <div className="record-card-body">
+                      {fields.map((field) => {
+                        const value = record.values[field.id];
+                        if (!value || value === "" || value === false) return null;
+                        
+                        if (field.name.toLowerCase().includes('price')) {
+                          return (
+                            <div key={field.id} className="record-price">
+                              ${typeof value === 'string' ? parseFloat(value).toFixed(2) : value}
+                            </div>
+                          );
+                        }
+                        
+                        if (field.name.toLowerCase().includes('sku')) {
+                          return (
+                            <div key={field.id} className="record-sku">
+                              SKU: {value}
+                            </div>
+                          );
+                        }
+                        
+                        if (field.name.toLowerCase().includes('category')) {
+                          return (
+                            <div key={field.id} className="record-category">
+                              {value}
+                            </div>
+                          );
+                        }
+                        
+                        if (field.name.toLowerCase().includes('stock') || field.name.toLowerCase().includes('in stock')) {
+                          return (
+                            <div key={field.id} className={`record-stock ${value ? 'in-stock' : 'out-of-stock'}`}>
+                              {value ? '✓ In Stock' : '✗ Out of Stock'}
+                            </div>
+                          );
+                        }
+                        
+                        if (field.type === 'textarea' && field.name.toLowerCase().includes('description')) {
+                          return (
+                            <div key={field.id} className="record-description">
+                              {String(value).substring(0, 100)}
+                              {String(value).length > 100 && '...'}
+                            </div>
+                          );
+                        }
+                        
+                        return null;
+                      })}
+                    </div>
+                    <div className="record-card-footer">
+                      <small className="record-date">
+                        Added {new Date(record.createdAt).toLocaleDateString()}
+                      </small>
+                      <button className="btn small" onClick={() => setView("entry")}>
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        ) : null}
 
       </main>
 
