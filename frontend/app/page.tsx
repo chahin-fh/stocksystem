@@ -1,6 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
 type FieldType = "text" | "number" | "date" | "url" | "email" | "boolean" | "textarea";
 
@@ -77,103 +79,66 @@ export default function Home() {
 
   const [error, setError] = useState("");
 
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [apiError, setApiError] = useState("");
 
 
+
+  // Fetch all data from API on mount
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        setApiError("");
 
-    const savedFields = localStorage.getItem("fieldbase_fields");
+        // Fetch database
+        const dbRes = await fetch(`${API_BASE}/database`);
+        if (dbRes.ok) {
+          const db = await dbRes.json();
+          if (db) {
+            setDatabase(db);
+            setDbName(db.name);
+            setDbDescription(db.description || "");
+            setIsFirstTime(false);
+            setView("dashboard");
+          }
+        }
 
-    const savedDatabase = localStorage.getItem("fieldbase_database");
+        // Fetch fields
+        const fieldsRes = await fetch(`${API_BASE}/fields`);
+        if (fieldsRes.ok) {
+          const fieldsData = await fieldsRes.json();
+          setFields(fieldsData);
+        }
 
-    const savedRecords = localStorage.getItem("fieldbase_records");
+        // Fetch records
+        const recordsRes = await fetch(`${API_BASE}/records`);
+        if (recordsRes.ok) {
+          const recordsData = await recordsRes.json();
+          setRecords(recordsData);
+        }
 
-    const savedActivities = localStorage.getItem("fieldbase_activities");
-
-    try {
-
-      if (savedFields) {
-
-        setFields(JSON.parse(savedFields));
-
+        // Fetch activities
+        const activitiesRes = await fetch(`${API_BASE}/activities`);
+        if (activitiesRes.ok) {
+          const activitiesData = await activitiesRes.json();
+          setActivities(activitiesData);
+        }
+      } catch (err) {
+        console.error("Failed to load data:", err);
+        setApiError("Failed to connect to backend. Make sure the server is running on port 3001.");
+      } finally {
+        setIsLoading(false);
       }
+    };
 
-      if (savedDatabase) {
-
-        const db = JSON.parse(savedDatabase);
-
-        setDatabase(db);
-
-        setDbName(db.name);
-
-        setDbDescription(db.description);
-
-        setIsFirstTime(false);
-
-        setView("dashboard");
-
-      }
-
-      if (savedRecords) {
-
-        setRecords(JSON.parse(savedRecords));
-
-      }
-
-      if (savedActivities) {
-
-        setActivities(JSON.parse(savedActivities));
-
-      }
-
-    } catch {
-
-      localStorage.removeItem("fieldbase_fields");
-
-      localStorage.removeItem("fieldbase_database");
-
-      localStorage.removeItem("fieldbase_records");
-
-      localStorage.removeItem("fieldbase_activities");
-
-    }
-
+    fetchData();
   }, []);
 
 
 
-  useEffect(() => {
-
-    localStorage.setItem("fieldbase_fields", JSON.stringify(fields));
-
-  }, [fields]);
-
-
-
-  useEffect(() => {
-
-    if (database) {
-
-      localStorage.setItem("fieldbase_database", JSON.stringify(database));
-
-    }
-
-  }, [database]);
-
-
-
-  useEffect(() => {
-
-    localStorage.setItem("fieldbase_records", JSON.stringify(records));
-
-  }, [records]);
-
-
-
-  useEffect(() => {
-
-    localStorage.setItem("fieldbase_activities", JSON.stringify(activities));
-
-  }, [activities]);
+  // No localStorage effects - all data is managed via API calls
 
 
 
@@ -191,88 +156,75 @@ export default function Home() {
 
 
 
-  const addField = () => {
-
+  const addField = async () => {
     const name = newFieldName.trim();
-
     if (!name) {
-
       setError("Field name is required");
-
       return;
-
     }
 
     if (fields.some((field) => field.name.toLowerCase() === name.toLowerCase())) {
-
       setError("Field already exists");
-
       return;
-
     }
 
-    setFields((prev) => [
-
-      ...prev,
-
-      { id: crypto.randomUUID(), name, type: newFieldType, required: newFieldRequired },
-
-    ]);
-
-    setNewFieldName("");
-
-    setNewFieldType("text");
-
-    setNewFieldRequired(false);
-
-    setError("");
-
-  };
-
-  const updateField = (fieldId: string, updates: Partial<FieldDef>) => {
-
-    setFields((prev) =>
-
-      prev.map((field) =>
-
-        field.id === fieldId ? { ...field, ...updates } : field
-
-      )
-
-    );
-
-    if (database && (updates.name || updates.type)) {
-
-      setDatabase({
-
-        ...database,
-
-        fieldCount: fields.length,
-
+    try {
+      const response = await fetch(`${API_BASE}/fields`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, type: newFieldType, required: newFieldRequired }),
       });
 
+      if (response.ok) {
+        const newField = await response.json();
+        setFields((prev) => [...prev, newField]);
+        setNewFieldName("");
+        setNewFieldType("text");
+        setNewFieldRequired(false);
+        setError("");
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || "Failed to add field");
+      }
+    } catch {
+      setError("Failed to connect to backend");
     }
-
   };
 
-  const deleteField = (fieldId: string) => {
-
-    setFields((prev) => prev.filter((field) => field.id !== fieldId));
-
-    if (database) {
-
-      setDatabase({
-
-        ...database,
-
-        fieldCount: fields.length - 1,
-
+  const updateField = async (fieldId: string, updates: Partial<FieldDef>) => {
+    try {
+      const response = await fetch(`${API_BASE}/fields/${fieldId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
       });
 
+      if (response.ok) {
+        const updatedField = await response.json();
+        setFields((prev) => prev.map((field) => (field.id === fieldId ? updatedField : field)));
+      } else {
+        setError("Failed to update field");
+      }
+    } catch {
+      setError("Failed to connect to backend");
     }
+  };
 
-    addActivity(`Deleted field`);
+  const deleteField = async (fieldId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/fields/${fieldId}`, {
+        method: "DELETE",
+      });
 
+      if (response.ok) {
+        setFields((prev) => prev.filter((field) => field.id !== fieldId));
+        addActivity("Deleted field");
+      } else {
+        setError("Failed to delete field");
+      }
+    } catch {
+      setError("Failed to connect to backend");
+    }
   };
 
 
@@ -309,52 +261,44 @@ export default function Home() {
 
 
 
-  const createDatabase = () => {
-
+  const createDatabase = async () => {
     if (!dbName.trim()) {
-
       setStep(0);
-
       setError("Database name is required");
-
       return;
-
     }
 
     if (fields.length === 0) {
-
       setStep(1);
-
       setError("Add at least one field");
-
       return;
-
     }
 
-    const newDatabase: DatabaseItem = {
+    try {
+      // Update database via API
+      const response = await fetch(`${API_BASE}/database`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: dbName.trim(),
+          description: dbDescription.trim(),
+          fieldCount: fields.length,
+        }),
+      });
 
-      id: crypto.randomUUID(),
-
-      name: dbName.trim(),
-
-      description: dbDescription.trim(),
-
-      fieldCount: fields.length,
-
-      createdAt: new Date().toISOString(),
-
-    };
-
-    setDatabase(newDatabase);
-
-    setIsFirstTime(false);
-
-    addActivity(`Created database "${dbName}" with ${fields.length} field(s)`);
-
-    setView("dashboard");
-
-    setError("");
-
+      if (response.ok) {
+        const updatedDb = await response.json();
+        setDatabase(updatedDb);
+        setIsFirstTime(false);
+        addActivity(`Created database "${dbName}" with ${fields.length} field(s)`);
+        setView("dashboard");
+        setError("");
+      } else {
+        setError("Failed to create database");
+      }
+    } catch {
+      setError("Failed to connect to backend");
+    }
   };
 
 
@@ -447,48 +391,43 @@ export default function Home() {
 
 
 
-  const submitRecord = (event: FormEvent) => {
-
+  const submitRecord = async (event: FormEvent) => {
     event.preventDefault();
 
     for (const field of fields) {
-
       if (field.required) {
-
         const value = recordValues[field.id];
-
         if (value === "" || value === undefined || value === false) {
-
           setError(`"${field.name}" is required`);
-
           return;
-
         }
-
       }
-
     }
 
-    const record: RecordItem = {
+    try {
+      const response = await fetch(`${API_BASE}/records`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: recordValues }),
+      });
 
-      id: crypto.randomUUID(),
-
-      createdAt: new Date().toISOString(),
-
-      values: recordValues,
-
-    };
-
-    setRecords((prev) => [record, ...prev]);
-
-    setRecordValues({});
-
-    addActivity(`Added record #${records.length + 1}`);
-
-    setError("");
-
-    setView("dashboard");
-
+      if (response.ok) {
+        const newRecord = await response.json();
+        setRecords((prev) => [newRecord, ...prev]);
+        setRecordValues({});
+        // Refresh activities from API
+        const activitiesRes = await fetch(`${API_BASE}/activities`);
+        if (activitiesRes.ok) {
+          setActivities(await activitiesRes.json());
+        }
+        setError("");
+        setView("dashboard");
+      } else {
+        setError("Failed to save record");
+      }
+    } catch {
+      setError("Failed to connect to backend");
+    }
   };
 
 
@@ -529,228 +468,97 @@ export default function Home() {
 
   };
 
-  const loadDemoData = () => {
-
-    const demoFields: FieldDef[] = [
-
-      { id: crypto.randomUUID(), name: "Product Name", type: "text", required: true },
-
-      { id: crypto.randomUUID(), name: "SKU", type: "text", required: true },
-
-      { id: crypto.randomUUID(), name: "Price", type: "number", required: true },
-
-      { id: crypto.randomUUID(), name: "In Stock", type: "boolean", required: false },
-
-      { id: crypto.randomUUID(), name: "Category", type: "text", required: false },
-
-      { id: crypto.randomUUID(), name: "Description", type: "textarea", required: false },
-
-      { id: crypto.randomUUID(), name: "Website", type: "url", required: false },
-
-      { id: crypto.randomUUID(), name: "Supplier Email", type: "email", required: false },
-
+  const loadDemoData = async () => {
+    const demoFieldDefs = [
+      { name: "Product Name", type: "text" as FieldType, required: true },
+      { name: "SKU", type: "text" as FieldType, required: true },
+      { name: "Price", type: "number" as FieldType, required: true },
+      { name: "In Stock", type: "boolean" as FieldType, required: false },
+      { name: "Category", type: "text" as FieldType, required: false },
+      { name: "Description", type: "textarea" as FieldType, required: false },
+      { name: "Website", type: "url" as FieldType, required: false },
+      { name: "Supplier Email", type: "email" as FieldType, required: false },
     ];
 
-    const fieldIdMap = new Map(demoFields.map(f => [f.name, f.id]));
-
-    const demoRecords: RecordItem[] = [
-
-      {
-
-        id: crypto.randomUUID(),
-
-        createdAt: new Date(Date.now() - 86400000 * 6).toISOString(),
-
-        values: {
-
-          [fieldIdMap.get("Product Name")!]: "Wireless Mouse",
-
-          [fieldIdMap.get("SKU")!]: "WM-001",
-
-          [fieldIdMap.get("Price")!]: "29.99",
-
-          [fieldIdMap.get("In Stock")!]: true,
-
-          [fieldIdMap.get("Category")!]: "Electronics",
-
-          [fieldIdMap.get("Description")!]: "Ergonomic wireless mouse with USB receiver",
-
-          [fieldIdMap.get("Website")!]: "https://example.com/mouse",
-
-          [fieldIdMap.get("Supplier Email")!]: "supplier@techcorp.com",
-
-        },
-
-      },
-
-      {
-
-        id: crypto.randomUUID(),
-
-        createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-
-        values: {
-
-          [fieldIdMap.get("Product Name")!]: "Mechanical Keyboard",
-
-          [fieldIdMap.get("SKU")!]: "KB-002",
-
-          [fieldIdMap.get("Price")!]: "89.99",
-
-          [fieldIdMap.get("In Stock")!]: true,
-
-          [fieldIdMap.get("Category")!]: "Electronics",
-
-          [fieldIdMap.get("Description")!]: "RGB backlit mechanical keyboard",
-
-          [fieldIdMap.get("Website")!]: "https://example.com/keyboard",
-
-          [fieldIdMap.get("Supplier Email")!]: "sales@keyboards.com",
-
-        },
-
-      },
-
-      {
-
-        id: crypto.randomUUID(),
-
-        createdAt: new Date(Date.now() - 86400000 * 4).toISOString(),
-
-        values: {
-
-          [fieldIdMap.get("Product Name")!]: "USB-C Cable",
-
-          [fieldIdMap.get("SKU")!]: "CABLE-003",
-
-          [fieldIdMap.get("Price")!]: "12.50",
-
-          [fieldIdMap.get("In Stock")!]: false,
-
-          [fieldIdMap.get("Category")!]: "Accessories",
-
-          [fieldIdMap.get("Description")!]: "2-meter braided USB-C charging cable",
-
-          [fieldIdMap.get("Website")!]: "https://example.com/cable",
-
-          [fieldIdMap.get("Supplier Email")!]: "orders@cablesupply.com",
-
-        },
-
-      },
-
-      {
-
-        id: crypto.randomUUID(),
-
-        createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-
-        values: {
-
-          [fieldIdMap.get("Product Name")!]: "Laptop Stand",
-
-          [fieldIdMap.get("SKU")!]: "STAND-004",
-
-          [fieldIdMap.get("Price")!]: "45.00",
-
-          [fieldIdMap.get("In Stock")!]: true,
-
-          [fieldIdMap.get("Category")!]: "Accessories",
-
-          [fieldIdMap.get("Description")!]: "Adjustable aluminum laptop stand",
-
-          [fieldIdMap.get("Website")!]: "https://example.com/stand",
-
-          [fieldIdMap.get("Supplier Email")!]: "support@stands.com",
-
-        },
-
-      },
-
-      {
-
-        id: crypto.randomUUID(),
-
-        createdAt: new Date().toISOString(),
-
-        values: {
-
-          [fieldIdMap.get("Product Name")!]: "Webcam 4K",
-
-          [fieldIdMap.get("SKU")!]: "CAM-005",
-
-          [fieldIdMap.get("Price")!]: "129.99",
-
-          [fieldIdMap.get("In Stock")!]: true,
-
-          [fieldIdMap.get("Category")!]: "Electronics",
-
-          [fieldIdMap.get("Description")!]: "4K Ultra HD webcam with auto-focus",
-
-          [fieldIdMap.get("Website")!]: "https://example.com/webcam",
-
-          [fieldIdMap.get("Supplier Email")!]: "wholesale@cameras.com",
-
-        },
-
-      },
-
+    const demoRecords = [
+      { "Product Name": "Wireless Mouse", "SKU": "WM-001", "Price": "29.99", "In Stock": true, "Category": "Electronics", "Description": "Ergonomic wireless mouse with USB receiver", "Website": "https://example.com/mouse", "Supplier Email": "supplier@techcorp.com" },
+      { "Product Name": "Mechanical Keyboard", "SKU": "KB-002", "Price": "89.99", "In Stock": true, "Category": "Electronics", "Description": "RGB backlit mechanical keyboard", "Website": "https://example.com/keyboard", "Supplier Email": "sales@keyboards.com" },
+      { "Product Name": "USB-C Cable", "SKU": "CABLE-003", "Price": "12.50", "In Stock": false, "Category": "Accessories", "Description": "2-meter braided USB-C charging cable", "Website": "https://example.com/cable", "Supplier Email": "orders@cablesupply.com" },
+      { "Product Name": "Laptop Stand", "SKU": "STAND-004", "Price": "45.00", "In Stock": true, "Category": "Accessories", "Description": "Adjustable aluminum laptop stand", "Website": "https://example.com/stand", "Supplier Email": "support@stands.com" },
+      { "Product Name": "Webcam 4K", "SKU": "CAM-005", "Price": "129.99", "In Stock": true, "Category": "Electronics", "Description": "4K Ultra HD webcam with auto-focus", "Website": "https://example.com/webcam", "Supplier Email": "wholesale@cameras.com" },
     ];
 
-    const demoActivities: Activity[] = [
+    try {
+      setIsLoading(true);
 
-      { id: crypto.randomUUID(), action: "Created database \"Product Catalog\" with 8 field(s)", createdAt: new Date(Date.now() - 86400000 * 7).toISOString() },
+      // Reset existing data
+      await fetch(`${API_BASE}/reset`, { method: "POST" });
 
-      { id: crypto.randomUUID(), action: "Added record #1", createdAt: new Date(Date.now() - 86400000 * 6).toISOString() },
+      // Update database name
+      await fetch(`${API_BASE}/database`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Product Catalog", description: "Main inventory tracking database" }),
+      });
 
-      { id: crypto.randomUUID(), action: "Added record #2", createdAt: new Date(Date.now() - 86400000 * 5).toISOString() },
+      // Create fields and build name-to-id mapping
+      const fieldIdMap = new Map<string, string>();
+      for (const fieldDef of demoFieldDefs) {
+        const res = await fetch(`${API_BASE}/fields`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fieldDef),
+        });
+        if (res.ok) {
+          const field = await res.json();
+          fieldIdMap.set(fieldDef.name, field.id);
+        }
+      }
 
-      { id: crypto.randomUUID(), action: "Added record #3", createdAt: new Date(Date.now() - 86400000 * 4).toISOString() },
+      // Create records with correct field IDs
+      for (const recordData of demoRecords) {
+        const values: Record<string, string | boolean> = {};
+        for (const [key, val] of Object.entries(recordData)) {
+          const fieldId = fieldIdMap.get(key);
+          if (fieldId) {
+            values[fieldId] = val;
+          }
+        }
+        await fetch(`${API_BASE}/records`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ values }),
+        });
+      }
 
-      { id: crypto.randomUUID(), action: "Added record #4", createdAt: new Date(Date.now() - 86400000 * 2).toISOString() },
+      // Reload all data
+      const [dbRes, fieldsRes, recordsRes, activitiesRes] = await Promise.all([
+        fetch(`${API_BASE}/database`),
+        fetch(`${API_BASE}/fields`),
+        fetch(`${API_BASE}/records`),
+        fetch(`${API_BASE}/activities`),
+      ]);
 
-      { id: crypto.randomUUID(), action: "Added record #5", createdAt: new Date().toISOString() },
+      if (dbRes.ok) {
+        const db = await dbRes.json();
+        setDatabase(db);
+        setDbName(db.name);
+        setDbDescription(db.description || "");
+      }
+      if (fieldsRes.ok) setFields(await fieldsRes.json());
+      if (recordsRes.ok) setRecords(await recordsRes.json());
+      if (activitiesRes.ok) setActivities(await activitiesRes.json());
 
-    ];
-
-    const demoDatabase: DatabaseItem = {
-
-      id: crypto.randomUUID(),
-
-      name: "Product Catalog",
-
-      description: "Main inventory tracking database",
-
-      fieldCount: demoFields.length,
-
-      createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-
-    };
-
-    setFields(demoFields);
-
-    setRecords(demoRecords);
-
-    setDatabase(demoDatabase);
-
-    setActivities(demoActivities);
-
-    setDbName("Product Catalog");
-
-    setDbDescription("Main inventory tracking database");
-
-    setInvites(["demo@example.com", "test@company.com"]);
-
-    setIsFirstTime(false);
-
-    localStorage.setItem("fieldbase_fields", JSON.stringify(demoFields));
-
-    localStorage.setItem("fieldbase_database", JSON.stringify(demoDatabase));
-
-    setView("dashboard");
-
-    setError("");
-
+      setInvites(["demo@example.com", "test@company.com"]);
+      setIsFirstTime(false);
+      setView("dashboard");
+      setError("");
+    } catch (err) {
+      console.error("Failed to load demo data:", err);
+      setError("Failed to load demo data. Make sure the backend is running.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
 
@@ -918,7 +726,13 @@ export default function Home() {
 
       <main className="app-main">
 
+        {apiError ? <p className="global-error" style={{background: '#fee2e2', color: '#991b1b', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px'}}>{apiError}</p> : null}
         {error ? <p className="global-error">{error}</p> : null}
+        {isLoading ? (
+          <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px'}}>
+            <div style={{width: '40px', height: '40px', border: '4px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
+          </div>
+        ) : null}
 
 
 
