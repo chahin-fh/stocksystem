@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
@@ -36,8 +37,11 @@ type DatabaseItem = {
 const FIELD_TYPES: FieldType[] = ["text", "number", "date", "url", "email", "boolean", "textarea"];
 
 
-
 export default function Home() {
+
+  const router = useRouter();
+
+  const [authChecked, setAuthChecked] = useState(false);
 
   const userName = "Fhima";
 
@@ -66,7 +70,6 @@ export default function Home() {
   const [showNavMenu, setShowNavMenu] = useState(false);
 
 
-
   const [newFieldName, setNewFieldName] = useState("");
 
   const [newFieldType, setNewFieldType] = useState<FieldType>("text");
@@ -84,19 +87,47 @@ export default function Home() {
   const [apiError, setApiError] = useState("");
 
 
-
-  // Fetch all data from API on mount
   useEffect(() => {
+    const token = localStorage.getItem("fieldbase_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    setAuthChecked(true);
+  }, [router]);
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("fieldbase_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+
+  useEffect(() => {
+    const savedFields = localStorage.getItem("fieldbase_fields");
+    const savedDatabase = localStorage.getItem("fieldbase_database");
+
     const fetchData = async () => {
       try {
         setIsLoading(true);
         setApiError("");
 
         // Fetch database
-        const dbRes = await fetch(`${API_BASE}/database`);
+        const dbRes = await fetch(`${API_BASE}/database`, {
+          headers: {
+            ...getAuthHeaders(),
+          },
+        });
         if (dbRes.ok) {
           const db = await dbRes.json();
-          if (db) {
+          const isEmptyDb = !db;
+
+          if (isEmptyDb) {
+            setDatabase(null);
+            setDbName("");
+            setDbDescription("");
+            setIsFirstTime(true);
+            setView("onboarding");
+          } else {
             setDatabase(db);
             setDbName(db.name);
             setDbDescription(db.description || "");
@@ -106,7 +137,11 @@ export default function Home() {
         }
 
         // Fetch fields
-        const fieldsRes = await fetch(`${API_BASE}/fields`);
+        const fieldsRes = await fetch(`${API_BASE}/fields`, {
+          headers: {
+            ...getAuthHeaders(),
+          },
+        });
         if (fieldsRes.ok) {
           const fieldsData = await fieldsRes.json();
           setFields(fieldsData);
@@ -141,19 +176,12 @@ export default function Home() {
   // No localStorage effects - all data is managed via API calls
 
 
-
   const addActivity = (action: string) => {
-
     setActivities((prev) => [
-
       { id: crypto.randomUUID(), action, createdAt: new Date().toISOString() },
-
       ...prev,
-
     ]);
-
   };
-
 
 
   const addField = async () => {
@@ -171,7 +199,10 @@ export default function Home() {
     try {
       const response = await fetch(`${API_BASE}/fields`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ name, type: newFieldType, required: newFieldRequired }),
       });
 
@@ -195,7 +226,10 @@ export default function Home() {
     try {
       const response = await fetch(`${API_BASE}/fields/${fieldId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify(updates),
       });
 
@@ -214,6 +248,9 @@ export default function Home() {
     try {
       const response = await fetch(`${API_BASE}/fields/${fieldId}`, {
         method: "DELETE",
+        headers: {
+          ...getAuthHeaders(),
+        },
       });
 
       if (response.ok) {
@@ -228,91 +265,79 @@ export default function Home() {
   };
 
 
-
   const addInvite = () => {
-
     const email = newInvite.trim().toLowerCase();
 
     const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
     if (!valid) {
-
       setError("Enter a valid email");
-
       return;
-
     }
 
     if (invites.includes(email)) {
-
       setError("Email already added");
-
       return;
-
     }
 
     setInvites((prev) => [...prev, email]);
-
     setNewInvite("");
-
     setError("");
-
   };
 
 
-
-  const createDatabase = async () => {
+  const handleStep0 = async () => {
     if (!dbName.trim()) {
-      setStep(0);
       setError("Database name is required");
       return;
     }
 
-    if (fields.length === 0) {
-      setStep(1);
-      setError("Add at least one field");
-      return;
-    }
-
     try {
-      // Update database via API
-      const response = await fetch(`${API_BASE}/database`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+      setIsLoading(true);
+      const response = await fetch(`${API_BASE}/databases`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({
           name: dbName.trim(),
           description: dbDescription.trim(),
-          fieldCount: fields.length,
         }),
       });
 
       if (response.ok) {
-        const updatedDb = await response.json();
-        setDatabase(updatedDb);
-        setIsFirstTime(false);
-        addActivity(`Created database "${dbName}" with ${fields.length} field(s)`);
-        setView("dashboard");
+        const createdDb = await response.json();
+        setDatabase(createdDb);
         setError("");
+        setStep(1);
       } else {
-        setError("Failed to create database");
+        const data = await response.json().catch(() => ({}));
+        setError(data?.error || "Failed to initialize database");
       }
     } catch {
       setError("Failed to connect to backend");
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const createDatabase = async () => {
+    // This is now just the final step to move to dashboard
+    setIsFirstTime(false);
+    addActivity(`Finalized database "${dbName}"`);
+    setView("dashboard");
+    setError("");
+  };
 
 
   const metrics = useMemo(() => {
-
     const requiredFields = fields.filter((field) => field.required);
 
     const requiredCount = requiredFields.length * Math.max(records.length, 1);
 
     const filledRequired = records.reduce((acc, record) => {
-
       const filled = requiredFields.filter((field) => {
-
         const value = record.values[field.id];
 
         return value !== "" && value !== undefined && value !== false;
@@ -450,11 +475,13 @@ export default function Home() {
 
     setShowNavMenu(false);
 
-    setView(database ? "dashboard" : "onboarding");
-
+    localStorage.removeItem("fieldbase_token");
+    localStorage.removeItem("fieldbase_user");
+    setAuthChecked(false);
+    setView("onboarding");
     setError("");
-
     addActivity("Logged out");
+    router.replace("/login");
 
   };
 
@@ -468,100 +495,13 @@ export default function Home() {
 
   };
 
-  const loadDemoData = async () => {
-    const demoFieldDefs = [
-      { name: "Product Name", type: "text" as FieldType, required: true },
-      { name: "SKU", type: "text" as FieldType, required: true },
-      { name: "Price", type: "number" as FieldType, required: true },
-      { name: "In Stock", type: "boolean" as FieldType, required: false },
-      { name: "Category", type: "text" as FieldType, required: false },
-      { name: "Description", type: "textarea" as FieldType, required: false },
-      { name: "Website", type: "url" as FieldType, required: false },
-      { name: "Supplier Email", type: "email" as FieldType, required: false },
-    ];
-
-    const demoRecords = [
-      { "Product Name": "Wireless Mouse", "SKU": "WM-001", "Price": "29.99", "In Stock": true, "Category": "Electronics", "Description": "Ergonomic wireless mouse with USB receiver", "Website": "https://example.com/mouse", "Supplier Email": "supplier@techcorp.com" },
-      { "Product Name": "Mechanical Keyboard", "SKU": "KB-002", "Price": "89.99", "In Stock": true, "Category": "Electronics", "Description": "RGB backlit mechanical keyboard", "Website": "https://example.com/keyboard", "Supplier Email": "sales@keyboards.com" },
-      { "Product Name": "USB-C Cable", "SKU": "CABLE-003", "Price": "12.50", "In Stock": false, "Category": "Accessories", "Description": "2-meter braided USB-C charging cable", "Website": "https://example.com/cable", "Supplier Email": "orders@cablesupply.com" },
-      { "Product Name": "Laptop Stand", "SKU": "STAND-004", "Price": "45.00", "In Stock": true, "Category": "Accessories", "Description": "Adjustable aluminum laptop stand", "Website": "https://example.com/stand", "Supplier Email": "support@stands.com" },
-      { "Product Name": "Webcam 4K", "SKU": "CAM-005", "Price": "129.99", "In Stock": true, "Category": "Electronics", "Description": "4K Ultra HD webcam with auto-focus", "Website": "https://example.com/webcam", "Supplier Email": "wholesale@cameras.com" },
-    ];
-
-    try {
-      setIsLoading(true);
-
-      // Reset existing data
-      await fetch(`${API_BASE}/reset`, { method: "POST" });
-
-      // Update database name
-      await fetch(`${API_BASE}/database`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Product Catalog", description: "Main inventory tracking database" }),
-      });
-
-      // Create fields and build name-to-id mapping
-      const fieldIdMap = new Map<string, string>();
-      for (const fieldDef of demoFieldDefs) {
-        const res = await fetch(`${API_BASE}/fields`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(fieldDef),
-        });
-        if (res.ok) {
-          const field = await res.json();
-          fieldIdMap.set(fieldDef.name, field.id);
-        }
-      }
-
-      // Create records with correct field IDs
-      for (const recordData of demoRecords) {
-        const values: Record<string, string | boolean> = {};
-        for (const [key, val] of Object.entries(recordData)) {
-          const fieldId = fieldIdMap.get(key);
-          if (fieldId) {
-            values[fieldId] = val;
-          }
-        }
-        await fetch(`${API_BASE}/records`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ values }),
-        });
-      }
-
-      // Reload all data
-      const [dbRes, fieldsRes, recordsRes, activitiesRes] = await Promise.all([
-        fetch(`${API_BASE}/database`),
-        fetch(`${API_BASE}/fields`),
-        fetch(`${API_BASE}/records`),
-        fetch(`${API_BASE}/activities`),
-      ]);
-
-      if (dbRes.ok) {
-        const db = await dbRes.json();
-        setDatabase(db);
-        setDbName(db.name);
-        setDbDescription(db.description || "");
-      }
-      if (fieldsRes.ok) setFields(await fieldsRes.json());
-      if (recordsRes.ok) setRecords(await recordsRes.json());
-      if (activitiesRes.ok) setActivities(await activitiesRes.json());
-
-      setInvites(["demo@example.com", "test@company.com"]);
-      setIsFirstTime(false);
-      setView("dashboard");
-      setError("");
-    } catch (err) {
-      console.error("Failed to load demo data:", err);
-      setError("Failed to load demo data. Make sure the backend is running.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
 
+
+
+  if (!authChecked) {
+    return null;
+  }
 
   return (
 
@@ -798,13 +738,8 @@ export default function Home() {
 
                 <div className="row-between">
 
-                  <button className="btn secondary" onClick={loadDemoData}>
 
-                    Load Demo Data
-
-                  </button>
-
-                  <button className="btn primary" onClick={() => setStep(1)}>
+                  <button className="btn primary" onClick={handleStep0}>
 
                     Continue
 
@@ -866,17 +801,27 @@ export default function Home() {
 
                 <div className="list">
 
-                  {fields.length === 0 ? <div className="empty">No fields yet. Add your first field above.</div> : null}
+                  {fields.length === 0 ? <div className="empty">No fields added. Build your schema to track products.</div> : null}
 
                   {fields.map((field) => (
 
                     <div className="item" key={field.id}>
 
-                      <span className="item-strong">{field.name}</span>
+                      <div>
 
-                      <span className="tag">{field.type}</span>
+                        <span className="item-strong">{field.name}</span>
 
-                      <span className={field.required ? "required" : "optional"}>{field.required ? "required" : "optional"}</span>
+                        <small className="tag">{field.type}</small>
+
+                        {field.required ? <small className="tag warning">required</small> : null}
+
+                      </div>
+
+                      <button className="btn small danger" onClick={() => deleteField(field.id)}>
+
+                        Remove
+
+                      </button>
 
                     </div>
 

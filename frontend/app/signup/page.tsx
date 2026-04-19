@@ -4,6 +4,8 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
+
 export default function SignUpPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
@@ -62,12 +64,27 @@ export default function SignUpPage() {
     setIsSubmitting(true);
     setMessage("Creating your account...");
 
-    // Temporary client-side signup simulation until backend auth is connected.
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: trimmedName, email: trimmedEmail, password }),
+      });
 
-    setMessage("Account created successfully.");
-    setIsSubmitting(false);
-    router.push("/login");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data?.error || "Sign up failed");
+        setIsSubmitting(false);
+        return;
+      }
+
+      setMessage("Account created successfully.");
+      setIsSubmitting(false);
+      router.push("/login");
+    } catch {
+      setError("Cannot reach server. Make sure backend is running.");
+      setIsSubmitting(false);
+    }
   };
 
   return (

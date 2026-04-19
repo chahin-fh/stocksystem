@@ -4,6 +4,8 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -47,16 +49,38 @@ export default function LoginPage() {
     setIsSubmitting(true);
     setMessage("Signing in...");
 
-    // Temporary client-side login simulation until backend auth is connected.
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password }),
+      });
 
-    setMessage(
-      rememberMe
-        ? "Signed in. We'll keep you logged in on this device."
-        : "Signed in successfully."
-    );
-    setIsSubmitting(false);
-    router.push("/");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data?.error || "Login failed");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (data?.token) {
+        localStorage.setItem("fieldbase_token", data.token);
+      }
+      if (data?.user) {
+        localStorage.setItem("fieldbase_user", JSON.stringify(data.user));
+      }
+
+      setMessage(
+        rememberMe
+          ? "Signed in. We'll keep you logged in on this device."
+          : "Signed in successfully."
+      );
+      setIsSubmitting(false);
+      router.push("/");
+    } catch {
+      setError("Cannot reach server. Make sure backend is running.");
+      setIsSubmitting(false);
+    }
   };
 
   return (

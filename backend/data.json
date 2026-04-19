@@ -1,0 +1,46 @@
+{
+  "database": {
+    "id": "529c52b0-6ba7-453e-93e1-a422065f1011",
+    "name": "test",
+    "description": "mala li3b w mala 7dith",
+    "fieldCount": 1,
+    "createdAt": "2026-04-18T22:41:17.440Z"
+  },
+  "fields": [
+    {
+      "id": "30bf6a7c-0f89-49f3-9faf-325d3c2d2363",
+      "name": "fdqfqdfqdf",
+      "type": "text",
+      "required": false,
+      "createdAt": "2026-04-18T23:59:04.689Z"
+    }
+  ],
+  "records": [],
+  "activities": [
+    {
+      "id": "c3b2ff93-c8ff-440f-80ad-b69cc0cf9f07",
+      "action": "Deleted field \"djaja\"",
+      "createdAt": "2026-04-19T00:01:41.964Z"
+    },
+    {
+      "id": "b1c5aad2-a8ae-47eb-bd83-e46337492ea0",
+      "action": "Deleted field \"dfqsdfqdsf\"",
+      "createdAt": "2026-04-19T00:01:40.148Z"
+    },
+    {
+      "id": "bb530a12-a0d2-4dc7-8742-dd372e3e4486",
+      "action": "Added field \"fdqfqdfqdf\"",
+      "createdAt": "2026-04-18T23:59:04.691Z"
+    },
+    {
+      "id": "466e789d-05ef-49b0-a166-f4691c5cf260",
+      "action": "Added field \"dfqsdfqdsf\"",
+      "createdAt": "2026-04-18T23:46:38.641Z"
+    },
+    {
+      "id": "b5a7c582-d20e-4879-a96a-264452a077b4",
+      "action": "Added field \"djaja\"",
+      "createdAt": "2026-04-18T23:46:32.687Z"
+    }
+  ]
+}
