@@ -43,7 +43,7 @@ export default function Home() {
 
   const [authChecked, setAuthChecked] = useState(false);
 
-  const userName = "Fhima";
+  const [user, setUser] = useState<{ id: string; fullName: string; email: string } | null>(null);
 
   const [view, setView] = useState<"onboarding" | "dashboard" | "entry" | "settings" | "allRecords">("onboarding");
 
@@ -86,17 +86,21 @@ export default function Home() {
 
   const [apiError, setApiError] = useState("");
 
+  const [message, setMessage] = useState("");
+
 
   useEffect(() => {
     const token = localStorage.getItem("fieldbase_token");
-    if (!token) {
+    const userStr = localStorage.getItem("fieldbase_user");
+    if (!token || !userStr) {
       router.replace("/login");
       return;
     }
+    setUser(JSON.parse(userStr));
     setAuthChecked(true);
   }, [router]);
 
-  const getAuthHeaders = () => {
+  const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem("fieldbase_token");
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
@@ -148,14 +152,18 @@ export default function Home() {
         }
 
         // Fetch records
-        const recordsRes = await fetch(`${API_BASE}/records`);
+        const recordsRes = await fetch(`${API_BASE}/records`, {
+          headers: getAuthHeaders()
+        });
         if (recordsRes.ok) {
           const recordsData = await recordsRes.json();
           setRecords(recordsData);
         }
 
         // Fetch activities
-        const activitiesRes = await fetch(`${API_BASE}/activities`);
+        const activitiesRes = await fetch(`${API_BASE}/activities`, {
+          headers: getAuthHeaders()
+        });
         if (activitiesRes.ok) {
           const activitiesData = await activitiesRes.json();
           setActivities(activitiesData);
@@ -176,11 +184,24 @@ export default function Home() {
   // No localStorage effects - all data is managed via API calls
 
 
-  const addActivity = (action: string) => {
-    setActivities((prev) => [
-      { id: crypto.randomUUID(), action, createdAt: new Date().toISOString() },
-      ...prev,
-    ]);
+  const addActivity = async (action: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/activities`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ action }),
+      });
+
+      if (response.ok) {
+        const newActivity = await response.json();
+        setActivities((prev) => [newActivity, ...prev]);
+      }
+    } catch (err) {
+      console.error("Failed to save activity:", err);
+    }
   };
 
 
@@ -331,6 +352,36 @@ export default function Home() {
   };
 
 
+  const updateDatabase = async (updates: { name?: string; description?: string }) => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_BASE}/database`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (response.ok) {
+        const updatedDb = await response.json();
+        setDatabase(updatedDb);
+        setDbName(updatedDb.name);
+        setDbDescription(updatedDb.description || "");
+        setError("");
+        addActivity(`Updated database info`);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setError(data?.error || "Failed to update database");
+      }
+    } catch {
+      setError("Failed to connect to backend");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const metrics = useMemo(() => {
     const requiredFields = fields.filter((field) => field.required);
 
@@ -432,7 +483,10 @@ export default function Home() {
     try {
       const response = await fetch(`${API_BASE}/records`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ values: recordValues }),
       });
 
@@ -440,15 +494,23 @@ export default function Home() {
         const newRecord = await response.json();
         setRecords((prev) => [newRecord, ...prev]);
         setRecordValues({});
-        // Refresh activities from API
-        const activitiesRes = await fetch(`${API_BASE}/activities`);
+        // Refresh activities from API (we'll fix this endpoint next)
+        const activitiesRes = await fetch(`${API_BASE}/activities`, {
+          headers: getAuthHeaders()
+        });
         if (activitiesRes.ok) {
           setActivities(await activitiesRes.json());
         }
         setError("");
-        setView("dashboard");
+        setMessage("Record saved successfully! You can add another one.");
+        
+        // Reset message after 3 seconds
+        setTimeout(() => {
+          setMessage("");
+        }, 3000);
       } else {
-        setError("Failed to save record");
+        const data = await response.json().catch(() => ({}));
+        setError(data?.error || "Failed to save record");
       }
     } catch {
       setError("Failed to connect to backend");
@@ -470,6 +532,34 @@ export default function Home() {
   ];
 
 
+
+  const updateProfile = async (newFullName: string) => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_BASE}/auth/profile`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ fullName: newFullName }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        localStorage.setItem("fieldbase_user", JSON.stringify(data.user));
+        setError("");
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setError(data?.error || "Failed to update profile");
+      }
+    } catch {
+      setError("Failed to connect to backend");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const onLogout = () => {
 
@@ -531,7 +621,7 @@ export default function Home() {
 
             onClick={() => setShowNavMenu((prev) => !prev)}
 
-            title={userName}
+            title={user?.fullName}
 
             aria-label="Open navigation menu"
 
@@ -539,7 +629,7 @@ export default function Home() {
 
           >
 
-            {userName.charAt(0).toUpperCase()}
+            {user?.fullName?.charAt(0).toUpperCase() || 'U'}
 
           </button>
 
@@ -668,6 +758,7 @@ export default function Home() {
 
         {apiError ? <p className="global-error" style={{background: '#fee2e2', color: '#991b1b', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px'}}>{apiError}</p> : null}
         {error ? <p className="global-error">{error}</p> : null}
+        {message ? <p className="global-success" style={{background: '#dcfce7', color: '#166534', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px'}}>{message}</p> : null}
         {isLoading ? (
           <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px'}}>
             <div style={{width: '40px', height: '40px', border: '4px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
@@ -1257,10 +1348,10 @@ export default function Home() {
           <section className="settings-layout">
             <aside className="settings-sidebar">
               <div className="settings-user">
-                <div className="settings-avatar">{userName.charAt(0).toUpperCase()}</div>
+                <div className="settings-avatar">{user?.fullName?.charAt(0).toUpperCase() || 'U'}</div>
                 <div className="settings-user-info">
-                  <p className="settings-user-name">{userName}</p>
-                  <p className="settings-user-email">{userName.toLowerCase()}@example.com</p>
+                  <p className="settings-user-name">{user?.fullName}</p>
+                  <p className="settings-user-email">{user?.email}</p>
                 </div>
               </div>
               <nav className="settings-nav">
@@ -1291,12 +1382,17 @@ export default function Home() {
                   <h2>Profile Settings</h2>
                   <div className="settings-section">
                     <label>Display Name</label>
-                    <input type="text" value={userName} readOnly />
+                    <input 
+                      type="text" 
+                      value={user?.fullName || ''} 
+                      onChange={(e) => setUser(prev => prev ? { ...prev, fullName: e.target.value } : null)}
+                    />
                   </div>
                   <div className="settings-section">
                     <label>Email</label>
-                    <input type="email" value={`${userName.toLowerCase()}@example.com`} readOnly />
+                    <input type="email" value={user?.email || ''} readOnly disabled />
                   </div>
+                  <button className="btn primary" onClick={() => user && updateProfile(user.fullName)}>Save Changes</button>
                 </div>
               )}
               {settingsTab === "notifications" && (
@@ -1313,7 +1409,57 @@ export default function Home() {
               {settingsTab === "database" && (
                 <div className="settings-panel">
                   <h2>Edit Database</h2>
-                  <p className="muted">Manage your database fields. Changes will affect how you enter and view records.</p>
+                  <p className="muted">Manage your database information and fields. Changes will affect your workspace.</p>
+                  
+                  <div className="settings-section">
+                    <label>Database Name</label>
+                    <input 
+                      type="text" 
+                      value={dbName} 
+                      onChange={(e) => setDbName(e.target.value)}
+                    />
+                  </div>
+                  <div className="settings-section">
+                    <label>Description</label>
+                    <textarea 
+                      rows={3}
+                      value={dbDescription} 
+                      onChange={(e) => setDbDescription(e.target.value)}
+                    />
+                  </div>
+                  <button className="btn primary" onClick={() => updateDatabase({ name: dbName, description: dbDescription })}>
+                    Update Database Info
+                  </button>
+
+                  <hr style={{ margin: '24px 0', border: '0', borderTop: '1px solid #e2e8f0' }} />
+
+                  <h3>Database Fields</h3>
+                  <div className="settings-section field-add-row" style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                    <input 
+                      type="text" 
+                      placeholder="New field name" 
+                      value={newFieldName} 
+                      onChange={(e) => setNewFieldName(e.target.value)} 
+                    />
+                    <select 
+                      value={newFieldType} 
+                      onChange={(e) => setNewFieldType(e.target.value as FieldType)}
+                      style={{ width: 'auto' }}
+                    >
+                      {FIELD_TYPES.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                    <label className="check" style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={newFieldRequired} 
+                        onChange={(e) => setNewFieldRequired(e.target.checked)} 
+                      />
+                      Req
+                    </label>
+                    <button className="btn" onClick={addField}>Add</button>
+                  </div>
                   <div className="edit-fields-list">
                     {fields.length === 0 ? (
                       <div className="empty">No fields yet. Create fields from the onboarding flow.</div>
@@ -1371,7 +1517,10 @@ export default function Home() {
                     <div className="record-card-body">
                       {fields.map((field) => {
                         const value = record.values[field.id];
-                        if (!value || value === "" || value === false) return null;
+                        // If value is empty or not provided, don't show the field
+                        if (value === "" || value === undefined || value === null) return null;
+                        // For boolean fields, if it's false, we might want to hide it unless it's specific
+                        if (typeof value === 'boolean' && !value && !field.name.toLowerCase().includes('stock')) return null;
                         
                         if (field.name.toLowerCase().includes('price')) {
                           return (
@@ -1399,8 +1548,8 @@ export default function Home() {
                         
                         if (field.name.toLowerCase().includes('stock') || field.name.toLowerCase().includes('in stock')) {
                           return (
-                            <div key={field.id} className={`record-stock ${value ? 'in-stock' : 'out-of-stock'}`}>
-                              {value ? '✓ In Stock' : '✗ Out of Stock'}
+                            <div key={field.id} className={`record-stock ${!!value ? 'in-stock' : 'out-of-stock'}`}>
+                              {!!value ? '✓ In Stock' : '✗ Out of Stock'}
                             </div>
                           );
                         }
@@ -1413,8 +1562,18 @@ export default function Home() {
                             </div>
                           );
                         }
-                        
-                        return null;
+
+                        // Fallback for fields that don't match specific filters above
+                        return (
+                          <div key={field.id} className="record-generic-field">
+                            <span className="field-label" style={{ fontWeight: '500', color: '#64748b', fontSize: '0.75rem', display: 'block' }}>
+                              {field.name}
+                            </span>
+                            <span className="field-value" style={{ color: '#1e293b' }}>
+                              {field.type === 'boolean' ? (value ? 'Yes' : 'No') : String(value)}
+                            </span>
+                          </div>
+                        );
                       })}
                     </div>
                     <div className="record-card-footer">

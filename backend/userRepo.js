@@ -23,7 +23,22 @@ async function createUser({ id, fullName, email, passwordHash }) {
   return rows[0];
 }
 
+async function updateUser(id, { fullName }) {
+  const pool = getPool();
+  await pool.query(
+    "UPDATE users SET full_name = ?, updated_at = ? WHERE id = ?",
+    [fullName, new Date(), id]
+  );
+
+  const [rows] = await pool.query(
+    "SELECT id, full_name, email, created_at, updated_at FROM users WHERE id = ? LIMIT 1",
+    [id]
+  );
+  return rows[0];
+}
+
 module.exports = {
   findUserByEmail,
   createUser,
+  updateUser,
 };

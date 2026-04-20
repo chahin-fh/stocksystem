@@ -4,7 +4,7 @@ const db = require('./db');
 const { v4: uuidv4 } = require('uuid');
 
 const { normalizeEmail, signToken, hashPassword, verifyPassword } = require('./auth');
-const { findUserByEmail, createUser } = require('./userRepo');
+const { findUserByEmail, createUser, updateUser } = require('./userRepo');
 const { requireAuth } = require('./authMiddleware');
 const {
   listDatabasesByCreatorId,
@@ -18,6 +18,15 @@ const {
   updateFieldById,
   deleteFieldById,
 } = require('./fieldRepo');
+const {
+  listRecordsByDatabaseId,
+  createRecord,
+  deleteRecordById,
+} = require('./recordRepo');
+const {
+  listActivitiesByDatabaseId,
+  createActivity,
+} = require('./activityRepo');
 
 try {
   require('dotenv').config();
@@ -110,6 +119,22 @@ app.post('/api/auth/login', async (req, res, next) => {
     res.json({
       user: { id: user.id, fullName: user.full_name, email: user.email },
       token,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.patch('/api/auth/profile', requireAuth, async (req, res, next) => {
+  try {
+    const fullName = String(req.body?.fullName || '').trim();
+    if (fullName.length < 2) {
+      return res.status(400).json({ error: 'Full name must be at least 2 characters' });
+    }
+
+    const updated = await updateUser(req.user.id, { fullName });
+    res.json({
+      user: { id: updated.id, fullName: updated.full_name, email: updated.email }
     });
   } catch (err) {
     next(err);
@@ -240,36 +265,86 @@ app.delete('/api/fields/:id', requireAuth, async (req, res, next) => {
 });
 
 // Records routes
-app.get('/api/records', (req, res) => {
-  res.json(db.getRecords());
-});
+app.get('/api/records', requireAuth, async (req, res, next) => {
+  try {
+    const currentDb = await getFirstDatabaseByCreatorId(req.user.id);
+    if (!currentDb) return res.json([]);
 
-app.post('/api/records', (req, res) => {
-  const { values } = req.body;
-  if (!values) {
-    return res.status(400).json({ error: 'Values are required' });
+    const records = await listRecordsByDatabaseId(currentDb.id);
+    res.json(records);
+  } catch (err) {
+    next(err);
   }
-  const record = db.addRecord(values);
-  res.status(201).json(record);
 });
 
-app.patch('/api/records/:id', (req, res) => {
-  const { values } = req.body;
-  const updated = db.updateRecord(req.params.id, values);
-  if (!updated) {
-    return res.status(404).json({ error: 'Record not found' });
+app.post('/api/records', requireAuth, async (req, res, next) => {
+  try {
+    const { values } = req.body;
+    if (!values) {
+      return res.status(400).json({ error: 'Values are required' });
+    }
+
+    const currentDb = await getFirstDatabaseByCreatorId(req.user.id);
+    if (!currentDb) {
+      return res.status(404).json({ error: 'Create a database first' });
+    }
+
+    const record = await createRecord({
+      id: uuidv4(),
+      databaseId: currentDb.id,
+      values
+    });
+
+    res.status(201).json(record);
+  } catch (err) {
+    next(err);
   }
-  res.json(updated);
 });
 
-app.delete('/api/records/:id', (req, res) => {
-  db.deleteRecord(req.params.id);
-  res.json({ success: true });
+app.delete('/api/records/:id', requireAuth, async (req, res, next) => {
+  try {
+    await deleteRecordById(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Activities routes
-app.get('/api/activities', (req, res) => {
-  res.json(db.getActivities());
+app.get('/api/activities', requireAuth, async (req, res, next) => {
+  try {
+    const currentDb = await getFirstDatabaseByCreatorId(req.user.id);
+    if (!currentDb) return res.json([]);
+
+    const activities = await listActivitiesByDatabaseId(currentDb.id);
+    res.json(activities);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/activities', requireAuth, async (req, res, next) => {
+  try {
+    const { action } = req.body;
+    if (!action) {
+      return res.status(400).json({ error: 'Action is required' });
+    }
+
+    const currentDb = await getFirstDatabaseByCreatorId(req.user.id);
+    if (!currentDb) {
+      return res.status(404).json({ error: 'Create a database first' });
+    }
+
+    const activity = await createActivity({
+      id: uuidv4(),
+      databaseId: currentDb.id,
+      action
+    });
+
+    res.status(201).json(activity);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Reset route (for testing)
@@ -286,10 +361,4 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`FieldBase API server running on http://localhost:${PORT}`);
-  console.log(`API endpoints:`);
-  console.log(`  GET  /api/health`);
-  console.log(`  GET  /api/database`);
-  console.log(`  GET  /api/fields`);
-  console.log(`  GET  /api/records`);
-  console.log(`  GET  /api/activities`);
 });

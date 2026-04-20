@@ -15,8 +15,33 @@
       "createdAt": "2026-04-18T23:59:04.689Z"
     }
   ],
-  "records": [],
+  "records": [
+    {
+      "id": "696aa765-e0cb-4abe-8ef9-7befcb624025",
+      "createdAt": "2026-04-20T09:42:38.610Z",
+      "values": {
+        "4c7c4231-49e3-4198-a8bb-bd1f1c52eff6": "malali3b"
+      }
+    },
+    {
+      "id": "dfdf9756-c7c1-4cb0-91d6-83eb36db359d",
+      "createdAt": "2026-04-20T09:45:56.149Z",
+      "values": {
+        "4c7c4231-49e3-4198-a8bb-bd1f1c52eff6": "jsodjodsf"
+      }
+    }
+  ],
   "activities": [
+    {
+      "id": "96d4ac04-3b4a-417f-b783-6d388f4e7153",
+      "action": "Added new record",
+      "createdAt": "2026-04-20T09:45:56.151Z"
+    },
+    {
+      "id": "26d7e8ea-4045-4cc7-bec6-fec705778015",
+      "action": "Added new record",
+      "createdAt": "2026-04-20T09:42:38.611Z"
+    },
     {
       "id": "c3b2ff93-c8ff-440f-80ad-b69cc0cf9f07",
       "action": "Deleted field \"djaja\"",
