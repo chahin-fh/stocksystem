@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
 
@@ -64,10 +65,10 @@ export default function LoginPage() {
       }
 
       if (data?.token) {
-        localStorage.setItem("fieldbase_token", data.token);
+        auth.setToken(data.token);
       }
       if (data?.user) {
-        localStorage.setItem("fieldbase_user", JSON.stringify(data.user));
+        auth.setUser(data.user);
       }
 
       setMessage(
@@ -159,12 +160,6 @@ export default function LoginPage() {
           <span>Don&apos;t have an account?</span>
           <Link href="/signup" className="auth-link">
             Create account
-          </Link>
-        </div>
-
-        <div className="auth-footer">
-          <Link href="/" className="auth-link">
-            Back to app
           </Link>
         </div>
       </main>

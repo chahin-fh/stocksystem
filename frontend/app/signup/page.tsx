@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:3001";
 
@@ -78,9 +79,17 @@ export default function SignUpPage() {
         return;
       }
 
+      // Auto-login after signup
+      if (data?.token) {
+        auth.setToken(data.token);
+      }
+      if (data?.user) {
+        auth.setUser(data.user);
+      }
+
       setMessage("Account created successfully.");
       setIsSubmitting(false);
-      router.push("/login");
+      router.push("/");
     } catch {
       setError("Cannot reach server. Make sure backend is running.");
       setIsSubmitting(false);

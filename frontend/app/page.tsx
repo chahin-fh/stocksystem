@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
@@ -90,18 +91,18 @@ export default function Home() {
 
 
   useEffect(() => {
-    const token = localStorage.getItem("fieldbase_token");
-    const userStr = localStorage.getItem("fieldbase_user");
-    if (!token || !userStr) {
+    const token = auth.getToken();
+    const user = auth.getUser();
+    if (!token || !user) {
       router.replace("/login");
       return;
     }
-    setUser(JSON.parse(userStr));
+    setUser(user);
     setAuthChecked(true);
   }, [router]);
 
   const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem("fieldbase_token");
+    const token = auth.getToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
@@ -279,6 +280,26 @@ export default function Home() {
         addActivity("Deleted field");
       } else {
         setError("Failed to delete field");
+      }
+    } catch {
+      setError("Failed to connect to backend");
+    }
+  };
+
+  const deleteRecord = async (recordId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/records/${recordId}`, {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeaders(),
+        },
+      });
+
+      if (response.ok) {
+        setRecords((prev) => prev.filter((record) => record.id !== recordId));
+        addActivity("Deleted record");
+      } else {
+        setError("Failed to delete record");
       }
     } catch {
       setError("Failed to connect to backend");
@@ -548,7 +569,7 @@ export default function Home() {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        localStorage.setItem("fieldbase_user", JSON.stringify(data.user));
+        auth.setUser(data.user);
         setError("");
       } else {
         const data = await response.json().catch(() => ({}));
@@ -562,17 +583,11 @@ export default function Home() {
   };
 
   const onLogout = () => {
-
     setShowNavMenu(false);
-
-    localStorage.removeItem("fieldbase_token");
-    localStorage.removeItem("fieldbase_user");
+    auth.logout();
     setAuthChecked(false);
     setView("onboarding");
     setError("");
-    addActivity("Logged out");
-    router.replace("/login");
-
   };
 
 
@@ -1580,9 +1595,17 @@ export default function Home() {
                       <small className="record-date">
                         Added {new Date(record.createdAt).toLocaleDateString()}
                       </small>
-                      <button className="btn small" onClick={() => setView("entry")}>
-                        Edit
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button className="btn small" onClick={() => setView("entry")}>
+                          Edit
+                        </button>
+                        <button 
+                          className="btn small danger" 
+                          onClick={() => deleteRecord(record.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))

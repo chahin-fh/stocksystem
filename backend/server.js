@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
+const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 
 const { normalizeEmail, signToken, hashPassword, verifyPassword } = require('./auth');
